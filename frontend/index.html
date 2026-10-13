@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ANALIZADOR DE SENTIMIENTOS</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px; background: #000; color: #33ff33; overflow-x: hidden;
+    font-family: 'VT323', 'Courier New', monospace; font-size: 22px; line-height: 1.4;
+    text-shadow: 0 0 6px rgba(51,255,51,.6);
+  }
+  #fondo { position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none; }
+  .terminal {
+    position: relative; z-index: 1; background: #000;
+    max-width: 700px; margin: 0 auto; border: 2px solid #33ff33; padding: 20px;
+  }
+  h1 { margin: 0 0 4px; font-size: 32px; font-weight: normal; }
+  .sub { opacity: .7; margin-bottom: 20px; }
+  textarea {
+    width: 100%; margin-top: 4px; padding: 8px; background: #000; color: #33ff33;
+    border: 2px solid #33ff33; font-family: inherit; font-size: 22px; outline: none;
+  }
+  textarea:focus { background: #031a03; }
+  button {
+    margin-top: 16px; padding: 8px 24px; background: #33ff33; color: #000;
+    border: 2px solid #33ff33; font-family: inherit; font-size: 24px; cursor: pointer;
+  }
+  button:hover { background: #000; color: #33ff33; }
+  button:disabled { opacity: .5; cursor: wait; }
+  #resultado { display: none; margin-top: 24px; border-top: 2px dashed #33ff33; padding-top: 16px; }
+  .linea { white-space: pre; overflow-x: auto; }
+  .veredicto { margin-top: 12px; font-size: 26px; }
+  .cursor { animation: parpadeo 1s steps(1) infinite; }
+  @keyframes parpadeo { 50% { opacity: 0; } }
+  #error { color: #ff5555; text-shadow: none; margin-top: 12px; }
+</style>
+</head>
+<body>
+<canvas id="fondo"></canvas>
+
+<div class="terminal">
+  <h1>&gt; ANALIZADOR DE SENTIMIENTOS<span class="cursor">_</span></h1>
+  <div class="sub">Escribe un comentario y presiona ENVIAR.</div>
+
+  <label>COMENTARIO:
+    <textarea id="comentario" rows="3" placeholder="Escribe aquí..."></textarea>
+  </label>
+  <button id="btn" onclick="enviar()">[ ENVIAR ]</button>
+  <div id="error"></div>
+
+  <div id="resultado">
+    <div id="texto"></div>
+    <br>
+    <div class="linea" id="lneg"></div>
+    <div class="linea" id="lneu"></div>
+    <div class="linea" id="lpos"></div>
+    <div class="veredicto" id="veredicto"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- Fondo animado: estrellas y naves en pixel art ---------- */
+const canvas = document.getElementById("fondo");
+const ctx = canvas.getContext("2d");
+let W, H;
+function ajustarLienzo() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener("resize", ajustarLienzo);
+ajustarLienzo();
+
+const PX = 4; // tamaño de cada "pixel" de los dibujos
+const SPRITES = [
+  [ // platillo
+    "...#####...",
+    ".#########.",
+    "###.###.###",
+    "###########",
+    "..##...##.."
+  ],
+  [ // alienígena
+    "..#.....#..",
+    "...#...#...",
+    "..#######..",
+    ".##.###.##.",
+    "###########",
+    "#.#######.#",
+    "#.#.....#.#",
+    "...##.##..."
+  ],
+  [ // cohete
+    "..#..",
+    ".###.",
+    ".###.",
+    "#####",
+    "#.#.#"
+  ]
+];
+
+const estrellas = Array.from({ length: 90 }, () => ({
+  x: Math.random() * W, y: Math.random() * H,
+  v: 0.2 + Math.random() * 0.8, t: Math.random() < 0.2 ? 3 : 2,
+  fase: Math.random() * 6.28
+}));
+
+function nuevaNave(inicial) {
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  return {
+    s: SPRITES[Math.floor(Math.random() * SPRITES.length)],
+    dir,
+    x: inicial ? Math.random() * W : (dir === 1 ? -100 : W + 100),
+    y: 30 + Math.random() * Math.max(H - 90, 10),
+    v: 0.6 + Math.random() * 1.4,
+    fase: Math.random() * 6.28,
+    amp: 10 + Math.random() * 25
+  };
+}
+const naves = Array.from({ length: 7 }, () => nuevaNave(true));
+
+function dibujarSprite(s, x, y) {
+  for (let r = 0; r < s.length; r++)
+    for (let c = 0; c < s[r].length; c++)
+      if (s[r][c] === "#") ctx.fillRect(Math.round(x + c * PX), Math.round(y + r * PX), PX, PX);
+}
+
+function cuadro(t) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#33ff33";
+  ctx.shadowColor = "#33ff33";
+
+  ctx.shadowBlur = 0;
+  for (const e of estrellas) {
+    e.x -= e.v;
+    if (e.x < 0) { e.x = W; e.y = Math.random() * H; }
+    ctx.globalAlpha = 0.35 + 0.35 * Math.sin(t / 400 + e.fase);
+    ctx.fillRect(e.x, e.y, e.t, e.t);
+  }
+
+  ctx.shadowBlur = 8;
+  ctx.globalAlpha = 0.85;
+  for (let i = 0; i < naves.length; i++) {
+    const n = naves[i];
+    n.x += n.dir * n.v;
+    const y = n.y + Math.sin(t / 600 + n.fase) * n.amp;
+    dibujarSprite(n.s, n.x, y);
+    if (n.x < -150 || n.x > W + 150) naves[i] = nuevaNave(false);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function animar(t) { cuadro(t); requestAnimationFrame(animar); }
+if (matchMedia("(prefers-reduced-motion: reduce)").matches) cuadro(0);
+else requestAnimationFrame(animar);
+
+/* ---------- Analizador ---------- */
+function barra(pct) {
+  const total = 20;
+  const llenos = Math.round(pct / 100 * total);
+  return "[" + "#".repeat(llenos) + ".".repeat(total - llenos) + "]";
+}
+
+function linea(nombre, pct) {
+  return nombre.padEnd(9, " ") + barra(pct) + " " + pct.toFixed(1) + "%";
+}
+
+async function enviar() {
+  const comentario = document.getElementById("comentario").value.trim();
+  const btn = document.getElementById("btn");
+  const error = document.getElementById("error");
+  error.textContent = "";
+  if (!comentario) { error.textContent = "! ESCRIBE UN COMENTARIO"; return; }
+
+  btn.disabled = true;
+  btn.textContent = "[ ANALIZANDO... ]";
+  try {
+    const resp = await fetch("/analizar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comentario })
+    });
+    if (!resp.ok) throw new Error("Error " + resp.status);
+    const r = await resp.json();
+
+    document.getElementById("texto").textContent = "COMENTARIO: " + r.comentario;
+    document.getElementById("lneg").textContent = linea("NEGATIVO", r.negativo);
+    document.getElementById("lneu").textContent = linea("NEUTRO", r.neutro);
+    document.getElementById("lpos").textContent = linea("POSITIVO", r.positivo);
+
+    const valores = [r.negativo, r.neutro, r.positivo];
+    const nombres = ["NEGATIVO", "NEUTRO", "POSITIVO"];
+    const max = valores.indexOf(Math.max(...valores));
+    document.getElementById("veredicto").textContent = "> RESULTADO: " + nombres[max];
+    document.getElementById("resultado").style.display = "block";
+  } catch (e) {
+    error.textContent = "! NO SE PUDO ANALIZAR. INTENTA DE NUEVO.";
+  }
+  btn.disabled = false;
+  btn.textContent = "[ ENVIAR ]";
+}
+
+document.getElementById("comentario").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) enviar();
+});
+</script>
+</body>
+</html>
